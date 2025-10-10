@@ -107,6 +107,7 @@ jobs:
       - name: Generate Firmware SHA-256
         run: |
           cp ${{ github.workspace }}/bin/targets/armsr/armv8/*.qcow2 ${{ github.workspace }}
+          cp ${{ github.workspace }}/bin/targets/armsr/armv8/*squashfs*.img.gz ${{ github.workspace }}
 
       - name: Upload ImmortWrt as release assets
         uses: softprops/action-gh-release@v2.2.1
@@ -116,6 +117,7 @@ jobs:
           body_path: ${{ github.workspace }}/armsr-armv8/info.md
           files: |
             ${{ github.workspace }}/*.qcow2
+            ${{ github.workspace }}/*squashfs*.img.gz
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

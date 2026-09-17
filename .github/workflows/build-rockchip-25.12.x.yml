@@ -89,7 +89,7 @@ on:
         description: '选择软件包空间大小'
         required: true
         type: choice
-        default: '10360M'
+        default: '10G'
         options:
           - '1G'
           - '2G'

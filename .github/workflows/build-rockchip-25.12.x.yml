@@ -89,13 +89,13 @@ on:
         description: '选择软件包空间大小'
         required: true
         type: choice
-        default: '10.1G'
+        default: '10360M'
         options:
           - '1G'
           - '2G'
           - '3G'
           - '4G'
-          - '10.1G'
+          - '10G'
       enable_store:
         description: "集成 store 商店"
         required: false
@@ -188,6 +188,9 @@ jobs:
               ;;
             4G)
               ROOTFS_SIZE=4096
+              ;;
+            10G)
+              ROOTFS_SIZE=10360
               ;;
           esac
           echo "ROOTFS_SIZE=$ROOTFS_SIZE" >> $GITHUB_ENV

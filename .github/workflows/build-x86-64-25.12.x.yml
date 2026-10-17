@@ -10,6 +10,7 @@ on:
         options:
           - 25.12.0
           - 25.12.1
+          - 25.12.2
       custom_router_ip:
         description: "请设置路由器的管理地址(仅对多网口路由器有效) 格式:192.168.x.1 或 10.x.x.1"
         required: true

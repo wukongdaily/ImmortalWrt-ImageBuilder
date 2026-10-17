@@ -27,6 +27,7 @@ on:
         options:
           - 25.12.0
           - 25.12.1
+          - 25.12.2
       enable_store:
         description: "集成 store 商店"
         required: false

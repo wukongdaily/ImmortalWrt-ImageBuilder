@@ -302,3 +302,14 @@
 | UBI  | NAND 文件系统 | UBIFS 镜像         | 嵌入式 NAND 路由器/开发板 |
 | ITB  | U-Boot 镜像 | 内核+设备树+initramfs | U-Boot 启动镜像      |
 
+
+
+### NanoPi R2S（TF 卡实测）
+
+- 设备：FriendlyARM NanoPi R2S（RK3328）
+- 固件：ImmortalWrt 24.10.5
+- 镜像：`immortalwrt-24.10.5-rockchip-armv8-friendlyarm_nanopi-r2s-squashfs-sysupgrade.img.gz`
+- 写卡工具：balenaEtcher
+- 验证结果：写入 TF 卡后成功启动
+
+使用前先解压 `.img.gz`，再用 balenaEtcher 将 `.img` 写入 TF 卡。

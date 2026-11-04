@@ -59,6 +59,10 @@ PACKAGES="$PACKAGES openssh-sftp-server"
 
 # 文件管理器
 PACKAGES="$PACKAGES luci-i18n-filemanager-zh-cn"
+PACKAGES="$PACKAGES luci-app-adguardhome luci-i18n-adguardhome-zh-cn"
+PACKAGES="$PACKAGES luci-app-upnp luci-i18n-upnp-zh-cn"
+PACKAGES="$PACKAGES luci-app-vlmcsd luci-i18n-vlmcsd-zh-cn"
+PACKAGES="$PACKAGES luci-app-nikki luci-i18n-nikki-zh-cn"
 # ======== shell/custom-packages.sh =======
 # 合并imm仓库以外的第三方插件
 PACKAGES="$PACKAGES $CUSTOM_PACKAGES"

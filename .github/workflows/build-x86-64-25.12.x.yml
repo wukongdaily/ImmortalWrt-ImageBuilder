@@ -1,4 +1,4 @@
-name: Build 25.12.x x86-64
+name: Build 25.12.x x86-64.11
 on:
   workflow_dispatch:
     inputs:

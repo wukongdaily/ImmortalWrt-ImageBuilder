@@ -39,10 +39,11 @@ echo "Interface count: $count" >>$LOGFILE
 
 # 2. 根据板子型号映射WAN和LAN接口
 board_name=$(cat /tmp/sysinfo/board_name 2>/dev/null || echo "unknown")
-echo "Board detected: $board_name" >>$LOGFILE
+echo "Board detected: $board_name" >>"$LOGFILE"
 
 wan_ifname=""
 lan_ifnames=""
+
 # 此处特殊处理个别开发板网口顺序问题
 case "$board_name" in
     "radxa,e20c"|"friendlyarm,nanopi-r5c")
@@ -50,11 +51,31 @@ case "$board_name" in
         lan_ifnames="eth0"
         echo "Using $board_name mapping: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
         ;;
+
     *)
-        # 默认第一个接口为WAN，其余为LAN
-        wan_ifname=$(echo "$ifnames" | awk '{print $1}')
-        lan_ifnames=$(echo "$ifnames" | cut -d ' ' -f2-)
-        echo "Using default mapping: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
+        # 优先根据MAC地址识别当前工控机的物理网口
+        lan_mac="cc:d3:1e:77:0d:6d"
+        wan_mac="cc:d3:1e:77:0d:6e"
+
+        for iface in $ifnames; do
+            iface_mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+
+            if [ "$iface_mac" = "$lan_mac" ]; then
+                lan_ifnames="$iface"
+            elif [ "$iface_mac" = "$wan_mac" ]; then
+                wan_ifname="$iface"
+            fi
+        done
+
+        # 两个MAC均匹配成功才采用固定分配
+        if [ -n "$lan_ifnames" ] && [ -n "$wan_ifname" ] && [ "$lan_ifnames" != "$wan_ifname" ]; then
+            echo "Using MAC mapping: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
+        else
+            # MAC匹配失败，沿用原来的默认规则
+            wan_ifname=$(echo "$ifnames" | awk '{print $1}')
+            lan_ifnames=$(echo "$ifnames" | cut -d ' ' -f2-)
+            echo "MAC mapping failed, using default mapping: WAN=$wan_ifname LAN=$lan_ifnames" >>"$LOGFILE"
+        fi
         ;;
 esac
 
@@ -74,11 +95,12 @@ elif [ "$count" -gt 1 ]; then
     uci set network.wan.device="$wan_ifname"
     uci set network.wan.proto='dhcp'
 
-    # 配置WAN6
+    # 配置WAN6 (禁用 IPv6)
     uci set network.wan6=interface
     uci set network.wan6.device="$wan_ifname"
-    uci set network.wan6.proto='dhcpv6'
-
+    uci set network.wan6.proto='none'
+    uci set network.wan6.disabled='1'
+    
     # 查找 br-lan 设备 section
     section=$(uci show network | awk -F '[.=]' '/\.@?device\[\d+\]\.name=.br-lan.$/ {print $2; exit}')
     if [ -z "$section" ]; then
@@ -105,8 +127,8 @@ elif [ "$count" -gt 1 ]; then
         uci set network.lan.ipaddr=$CUSTOM_IP
         echo "custom router ip is $CUSTOM_IP" >> $LOGFILE
     else
-        uci set network.lan.ipaddr='192.168.100.1'
-        echo "default router ip is 192.168.100.1" >> $LOGFILE
+        uci set network.lan.ipaddr='192.168.10.1'
+        echo "default router ip is 192.168.10.1" >> $LOGFILE
     fi
 
     # PPPoE设置

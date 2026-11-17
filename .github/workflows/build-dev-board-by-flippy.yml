@@ -1,4 +1,3 @@
-
 name: Build Dev Board Firmware(Flippy)
 on:
   workflow_dispatch:
@@ -110,7 +109,7 @@ jobs:
         run: |
           cp n1/99-banner.sh files/etc/uci-defaults/
 
-      - name: H68K 板型+CPU显示修复（覆盖/sbin/cpuinfo）
+      - name: H68K 板型+CPU显示修复 + 彻底移除无线 + SOC温度
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           mkdir -p files/etc/uci-defaults
@@ -127,12 +126,25 @@ jobs:
           echo 'exit 0' >> files/etc/uci-defaults/99-h68k-info
           chmod +x files/etc/uci-defaults/99-h68k-info
 
-          # 删除LuCI无线菜单（无WiFi硬件）
+          # 删除LuCI无线菜单文件
           echo '#!/bin/sh' > files/etc/uci-defaults/99-del-wifi
           echo 'rm -f /usr/lib/lua/luci/controller/admin/wireless.lua' >> files/etc/uci-defaults/99-del-wifi
           echo 'rm -f /usr/lib/lua/luci/view/admin_network/wireless.htm' >> files/etc/uci-defaults/99-del-wifi
           echo 'exit 0' >> files/etc/uci-defaults/99-del-wifi
           chmod +x files/etc/uci-defaults/99-del-wifi
+
+          # 删除无线配置文件，彻底消除无线菜单入口
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-rm-wireless-config
+          echo 'rm -f /etc/config/wireless' >> files/etc/uci-defaults/99-rm-wireless-config
+          echo 'exit 0' >> files/etc/uci-defaults/99-rm-wireless-config
+          chmod +x files/etc/uci-defaults/99-rm-wireless-config
+
+          # 首页增加RK3568温度读取
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-add-temperature
+          echo 'uci set luci.main.tempfile="/sys/class/thermal/thermal_zone0/temp"' >> files/etc/uci-defaults/99-add-temperature
+          echo 'uci commit luci' >> files/etc/uci-defaults/99-add-temperature
+          echo 'exit 0' >> files/etc/uci-defaults/99-add-temperature
+          chmod +x files/etc/uci-defaults/99-add-temperature
 
       - name: 预置 OpenClash
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
@@ -171,7 +183,7 @@ jobs:
               -e PROFILE=$profile \
               -e INCLUDE_DOCKER=$include_docker \
               -e ROOTFS_PARTSIZE=$rootfs_partsize \
-              -e PACKAGES="-kmod-cfg80211 -kmod-mac80211 -hostapd -wpa-supplicant -luci-proto-relayd" \
+              -e PACKAGES="-kmod-cfg80211 -kmod-mac80211 -hostapd -wpa-supplicant -luci-proto-relayd lm-sensors" \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-${luci_version} /bin/bash /home/build/immortalwrt/build.sh
           done
 
@@ -187,15 +199,15 @@ jobs:
       - name: 查找rootfs.tar.gz所在路径
         id: find_rootfs
         run: |
-          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
+          ROOTFS_FILE=$(find bin/targets/armsr/armv8 -type f -name "*rootfs.tar.gz" | head -n1)
           echo "✅ Found: $ROOTFS_FILE"
-          if [ ! -f "$ROOTFS_FILE" ]; then
+          if [ -z "$ROOTFS_FILE" ]; then
             echo "❌ 找不到 rootfs.tar.gz 文件"
             exit 1
           fi
           echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
 
-      - name: Package armsr-armv8 as ImmortalWrt for Radxa
+      - name: Package armsr-armv8 as ImmortalWrt for H68K
         uses: wukongdaily/flippy-openwrt-actions@kernel-6.1
         if: ${{ steps.find_rootfs.outputs.file != '' }} && !cancelled()
         env:
@@ -216,18 +228,18 @@ jobs:
           KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
           MODEL=${{ inputs.openwrt_soc }}
           if [ -n "$PREBUILT_LUCI_VERSION" ]; then
-              echo "PREBUILT_LUCI_VERSION is not empty: $PREBUILT_LUCI_VERSION"
-              mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-$PREBUILT_LUCI_VERSION-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+            echo "PREBUILT_LUCI_VERSION is set"
+            mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-${PREBUILT_LUCI_VERSION}-${MODEL}-btrfs-${KERNEL_VERSION}.img.gz"
           else
-              LUCI_VERSION="${{ github.event.inputs.luci_version }}"
-              mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-$LUCI_VERSION-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+            LUCI_VERSION="${{ inputs.luci_version }}"
+            mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-${LUCI_VERSION}-${MODEL}-btrfs-${KERNEL_VERSION}.img.gz"
           fi
 
       - name: Upload firmware to GitHub Releases
         uses: softprops/action-gh-release@v3
         with:
           tag_name: flippy
-          name: ImmortalWrt for Radxa Series and Similar Devices
+          name: ImmortalWrt for Hinlink H68K
           body_path: ${{ github.workspace }}/n1/radxa.md
           files: |
             ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz

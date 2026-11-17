@@ -16,7 +16,7 @@ on:
           - 24.10.5
           - 24.10.6
       openwrt_kernel:
-        description: "选择构建的内核 当高版本内核没有时 系统会自动挑选匹配的内核。比如radxa e52c 即便你选择了6.1.y 可能最终构建还是5.10.160"
+        description: "选择构建的内核"
         required: false
         default: "6.1.y"
         type: choice
@@ -30,7 +30,7 @@ on:
       openwrt_soc:
         description: "选择开发板型号"
         required: false
-        default: "e20c"
+        default: "h68k"
         type: choice
         options:
           - e20c
@@ -58,10 +58,8 @@ on:
           - s912
           - s922x
           - s922x-n2
-
       include_docker:
-        description: |
-          是否编译 Docker 插件
+        description: "是否编译 Docker 插件"
         required: true
         default: 'no'
         type: choice
@@ -69,7 +67,7 @@ on:
           - 'yes'
           - 'no'
       skip_imagebuilder:
-        description: "直接使用底包快速构建固件, 忽略自定义插件 ----（跳过 ImageBuilder）"
+        description: "直接使用底包快速构建固件"
         required: false
         default: false
         type: boolean
@@ -109,9 +107,55 @@ jobs:
       - name: 处理是否替换 banner 信息
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
         run: |
-          # 使用ImageBuilder构建 且用户勾选了替换banner时
           cp n1/99-banner.sh files/etc/uci-defaults/
-      
+
+      - name: H68K 板型+CPU显示修复 + 彻底移除无线 + SOC温度
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        run: |
+          mkdir -p files/etc/uci-defaults
+          mkdir -p files/sbin
+          # 覆盖 /sbin/cpuinfo，LuCI系统页读取这个输出
+          echo '#!/bin/sh' > files/sbin/cpuinfo
+          echo 'echo "Cortex-A55 x4"' >> files/sbin/cpuinfo
+          chmod +x files/sbin/cpuinfo
+
+          # 写入板型型号信息
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-h68k-info
+          echo 'echo "hinlink,h68k" > /tmp/sysinfo/board_name' >> files/etc/uci-defaults/99-h68k-info
+          echo 'echo "Hinlink H68K (RK3568, 4×Cortex-A55)" > /tmp/sysinfo/model' >> files/etc/uci-defaults/99-h68k-info
+          echo 'exit 0' >> files/etc/uci-defaults/99-h68k-info
+          chmod +x files/etc/uci-defaults/99-h68k-info
+
+          # 删除LuCI无线菜单文件
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-del-wifi
+          echo 'rm -f /usr/lib/lua/luci/controller/admin/wireless.lua' >> files/etc/uci-defaults/99-del-wifi
+          echo 'rm -f /usr/lib/lua/luci/view/admin_network/wireless.htm' >> files/etc/uci-defaults/99-del-wifi
+          echo 'exit 0' >> files/etc/uci-defaults/99-del-wifi
+          chmod +x files/etc/uci-defaults/99-del-wifi
+
+          # 删除无线配置文件，彻底消除无线菜单入口
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-rm-wireless-config
+          echo 'rm -f /etc/config/wireless' >> files/etc/uci-defaults/99-rm-wireless-config
+          echo 'exit 0' >> files/etc/uci-defaults/99-rm-wireless-config
+          chmod +x files/etc/uci-defaults/99-rm-wireless-config
+
+          # 首页增加RK3568温度读取
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-add-temperature
+          echo 'uci set luci.main.tempfile="/sys/class/thermal/thermal_zone0/temp"' >> files/etc/uci-defaults/99-add-temperature
+          echo 'uci commit luci' >> files/etc/uci-defaults/99-add-temperature
+          echo 'exit 0' >> files/etc/uci-defaults/99-add-temperature
+          chmod +x files/etc/uci-defaults/99-add-temperature
+
+      - name: 预置 OpenClash
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        run: |
+          mkdir -p files/etc/uci-defaults
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-install-openclash
+          echo 'opkg update' >> files/etc/uci-defaults/99-install-openclash
+          echo 'opkg install luci-app-openclash' >> files/etc/uci-defaults/99-install-openclash
+          echo 'exit 0' >> files/etc/uci-defaults/99-install-openclash
+          chmod +x files/etc/uci-defaults/99-install-openclash
+
       - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
@@ -120,16 +164,17 @@ jobs:
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
           luci_version="${{ github.event.inputs.luci_version }}"
-          
+
           IFS=',' read -r -a profile_array <<< "$profiles"
-          
+
           for profile in "${profile_array[@]}"; do
             echo "Building for profile: $profile"
-            
+
             docker run --rm -i \
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
+              -v "${{ github.workspace }}/files/sbin:/home/build/immortalwrt/files/sbin" \
               -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
               -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
               -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
@@ -138,9 +183,10 @@ jobs:
               -e PROFILE=$profile \
               -e INCLUDE_DOCKER=$include_docker \
               -e ROOTFS_PARTSIZE=$rootfs_partsize \
+              -e PACKAGES="-kmod-cfg80211 -kmod-mac80211 -hostapd -wpa-supplicant -luci-proto-relayd lm-sensors" \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-${luci_version} /bin/bash /home/build/immortalwrt/build.sh
           done
-          
+
       - name: Download prebuilt rootfs.tar.gz
         if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
         run: |
@@ -153,17 +199,17 @@ jobs:
       - name: 查找rootfs.tar.gz所在路径
         id: find_rootfs
         run: |
-          ROOTFS_FILE=$(find bin/targets/armsr/armv8/ -type f -name "*rootfs.tar.gz" | head -n1)
+          ROOTFS_FILE=$(find bin/targets/armsr/armv8 -type f -name "*rootfs.tar.gz" | head -n1)
           echo "✅ Found: $ROOTFS_FILE"
-          if [ ! -f "$ROOTFS_FILE" ]; then
+          if [ -z "$ROOTFS_FILE" ]; then
             echo "❌ 找不到 rootfs.tar.gz 文件"
             exit 1
           fi
           echo "file=$ROOTFS_FILE" >> $GITHUB_OUTPUT
 
-      - name: Package armsr-armv8 as ImmortalWrt for Radxa
+      - name: Package armsr-armv8 as ImmortalWrt for H68K
         uses: wukongdaily/flippy-openwrt-actions@kernel-6.1
-        if: ${{ steps.down.outputs.status }} == 'success' && !cancelled()
+        if: ${{ steps.find_rootfs.outputs.file != '' }} && !cancelled()
         env:
           OPENWRT_ARMVIRT: ${{ steps.find_rootfs.outputs.file }}
           PACKAGE_SOC: ${{ inputs.openwrt_soc }}
@@ -182,19 +228,18 @@ jobs:
           KERNEL_VERSION=$(echo "$FILENAME" | grep -oP 'k\d+\.\d+\.\d+')
           MODEL=${{ inputs.openwrt_soc }}
           if [ -n "$PREBUILT_LUCI_VERSION" ]; then
-              echo "PREBUILT_LUCI_VERSION is not empty: $PREBUILT_LUCI_VERSION"
-              mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-$PREBUILT_LUCI_VERSION-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+            echo "PREBUILT_LUCI_VERSION is set"
+            mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-${PREBUILT_LUCI_VERSION}-${MODEL}-btrfs-${KERNEL_VERSION}.img.gz"
           else
-              LUCI_VERSION="${{ github.event.inputs.luci_version }}"
-              mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-$LUCI_VERSION-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
+            LUCI_VERSION="${{ inputs.luci_version }}"
+            mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-${LUCI_VERSION}-${MODEL}-btrfs-${KERNEL_VERSION}.img.gz"
           fi
-         
 
       - name: Upload firmware to GitHub Releases
         uses: softprops/action-gh-release@v3
         with:
           tag_name: flippy
-          name: ImmortalWrt for Radxa Series and Similar Devices
+          name: ImmortalWrt for Hinlink H68K
           body_path: ${{ github.workspace }}/n1/radxa.md
           files: |
             ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz

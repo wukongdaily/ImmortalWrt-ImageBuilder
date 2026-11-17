@@ -17,6 +17,7 @@ on:
         description: |
           输入 软路由型号 可选值如下：
         options:
+          - hinlink_h68k
           - linkease_easepi-r1
           - 9tripod_x3568-v4
           - ariaboard_photonicat
@@ -143,8 +144,7 @@ jobs:
           mkdir -p "${{ github.workspace }}/custom"
           echo "${{ github.event.inputs.custom_router_ip }}" > "${{ github.workspace }}/custom/custom_router_ip.txt"
           echo "您设置的Rockchip软路由管理地址是:${{ github.event.inputs.custom_router_ip }}"
-          # 后续步骤会将该文件映射到路由器/etc/config/custom_router_ip.txt 以便用于开机脚本99-custom.sh读取用户设置的ip
-      
+
       - name: Validate PPPoE Inputs
         run: |
           if [[ "${{ inputs.enable_pppoe }}" == "yes" ]]; then
@@ -169,10 +169,20 @@ jobs:
              echo "✅ 已为Rockchip平台补充 docker 组件"
           fi
       
-
       - name: Building Rockchip ImmortalWrt 25.12.x
         run: |
-          profile="${{ github.event.inputs.profile }}"
+          raw_profile="${{ github.event.inputs.profile }}"
+          
+          # 设备代号转换映射：将下拉菜单的长名称转换为 Image Builder 能识别的短代号
+          case "$raw_profile" in
+            "hinlink_h68k")
+              profile="h68k"
+              ;;
+            *)
+              profile="$raw_profile"
+              ;;
+          esac
+          
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
           case "$rootfs_partsize" in
@@ -209,7 +219,6 @@ jobs:
               -e PPPOE_PASSWORD=${{ inputs.pppoe_password }} \
           immortalwrt/imagebuilder:rockchip-armv8-openwrt-${luci_version} /bin/bash /home/build/immortalwrt/build.sh
         
-    
       - name: Create info
         run: |
           cat > ${{ github.workspace }}/router-info.md <<EOF

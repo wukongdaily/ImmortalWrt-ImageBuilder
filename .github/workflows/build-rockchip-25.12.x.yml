@@ -136,7 +136,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set executable permissions
-        run: chmod +x ${{ github.workspace }}/rockchip/build24.sh
+        run: chmod +x ${{ github.workspace }}/rockchip/build25.sh
       
       - name: Save Custom Router IP into OpenWrt files
         run: |

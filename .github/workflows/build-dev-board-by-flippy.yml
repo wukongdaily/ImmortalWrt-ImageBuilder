@@ -16,7 +16,7 @@ on:
           - 24.10.5
           - 24.10.6
       openwrt_kernel:
-        description: "选择构建的内核 当高版本内核没有时 系统会自动挑选匹配的内核。比如radxa e52c 即便你选择了6.1.y 可能最终构建还是5.10.160"
+        description: "选择构建的内核"
         required: false
         default: "6.1.y"
         type: choice
@@ -30,7 +30,7 @@ on:
       openwrt_soc:
         description: "选择开发板型号"
         required: false
-        default: "e20c"
+        default: "h68k"
         type: choice
         options:
           - e20c
@@ -58,10 +58,8 @@ on:
           - s912
           - s922x
           - s922x-n2
-
       include_docker:
-        description: |
-          是否编译 Docker 插件
+        description: "是否编译 Docker 插件"
         required: true
         default: 'no'
         type: choice
@@ -69,7 +67,7 @@ on:
           - 'yes'
           - 'no'
       skip_imagebuilder:
-        description: "直接使用底包快速构建固件, 忽略自定义插件 ----（跳过 ImageBuilder）"
+        description: "直接使用底包快速构建固件"
         required: false
         default: false
         type: boolean
@@ -109,17 +107,46 @@ jobs:
       - name: 处理是否替换 banner 信息
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
         run: |
-          # 使用ImageBuilder构建 且用户勾选了替换banner时
           cp n1/99-banner.sh files/etc/uci-defaults/
-      - name: 添加 H68K 设备信息补丁
+
+      - name: 添加 H68K 设备+CPU修复补丁
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           mkdir -p files/etc/uci-defaults
+          mkdir -p files/etc/init.d
+
+          # 1. 创建开机自启服务：每次开机修复 cpuinfo（mount --bind）
+          echo '#!/bin/sh /etc/rc.common' > files/etc/init.d/cpuinfo-fix
+          echo 'START=99' >> files/etc/init.d/cpuinfo-fix
+          echo 'start() {' >> files/etc/init.d/cpuinfo-fix
+          echo '    if ! grep -q "model name" /proc/cpuinfo; then' >> files/etc/init.d/cpuinfo-fix
+          echo '        mkdir -p /tmp/cpuinfo_fix' >> files/etc/init.d/cpuinfo-fix
+          echo '        cp /proc/cpuinfo /tmp/cpuinfo_fix/cpuinfo' >> files/etc/init.d/cpuinfo-fix
+          echo "        sed -i 's/^processor/ model name      : ARMv8 Cortex-A55 (RK3568)\\nprocessor/' /tmp/cpuinfo_fix/cpuinfo" >> files/etc/init.d/cpuinfo-fix
+          echo '        mount --bind /tmp/cpuinfo_fix/cpuinfo /proc/cpuinfo' >> files/etc/init.d/cpuinfo-fix
+          echo '    fi' >> files/etc/init.d/cpuinfo-fix
+          echo '}' >> files/etc/init.d/cpuinfo-fix
+          chmod +x files/etc/init.d/cpuinfo-fix
+
+          # 2. 首次开机：设置板型 + 启用CPU修复服务
           echo '#!/bin/sh' > files/etc/uci-defaults/99-h68k-info
           echo 'echo "hinlink,h68k" > /tmp/sysinfo/board_name' >> files/etc/uci-defaults/99-h68k-info
           echo 'echo "Hinlink H68K (RK3568, 4×Cortex-A55)" > /tmp/sysinfo/model' >> files/etc/uci-defaults/99-h68k-info
+          echo '/etc/init.d/cpuinfo-fix enable' >> files/etc/uci-defaults/99-h68k-info
+          echo '/etc/init.d/cpuinfo-fix start' >> files/etc/uci-defaults/99-h68k-info
           echo 'exit 0' >> files/etc/uci-defaults/99-h68k-info
           chmod +x files/etc/uci-defaults/99-h68k-info
+
+      - name: 预置 OpenClash
+        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
+        run: |
+          mkdir -p files/etc/uci-defaults
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-install-openclash
+          echo 'opkg update' >> files/etc/uci-defaults/99-install-openclash
+          echo 'opkg install luci-app-openclash' >> files/etc/uci-defaults/99-install-openclash
+          echo 'exit 0' >> files/etc/uci-defaults/99-install-openclash
+          chmod +x files/etc/uci-defaults/99-install-openclash
+
       - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
@@ -128,12 +155,12 @@ jobs:
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
           luci_version="${{ github.event.inputs.luci_version }}"
-          
+
           IFS=',' read -r -a profile_array <<< "$profiles"
-          
+
           for profile in "${profile_array[@]}"; do
             echo "Building for profile: $profile"
-            
+
             docker run --rm -i \
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
@@ -148,7 +175,7 @@ jobs:
               -e ROOTFS_PARTSIZE=$rootfs_partsize \
               immortalwrt/imagebuilder:armsr-armv8-openwrt-${luci_version} /bin/bash /home/build/immortalwrt/build.sh
           done
-          
+
       - name: Download prebuilt rootfs.tar.gz
         if: ${{ github.event.inputs.skip_imagebuilder == 'true' }}
         run: |
@@ -196,7 +223,6 @@ jobs:
               LUCI_VERSION="${{ github.event.inputs.luci_version }}"
               mv "$FILE" "${{ env.PACKAGED_OUTPUTPATH }}/immortalwrt-$LUCI_VERSION-$MODEL-btrfs-$KERNEL_VERSION.img.gz"
           fi
-         
 
       - name: Upload firmware to GitHub Releases
         uses: softprops/action-gh-release@v3

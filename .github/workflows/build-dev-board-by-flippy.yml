@@ -111,7 +111,7 @@ jobs:
         run: |
           # 使用ImageBuilder构建 且用户勾选了替换banner时
           cp n1/99-banner.sh files/etc/uci-defaults/
-          - name: 添加 H68K 设备信息补丁
+      - name: 添加 H68K 设备信息补丁
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           mkdir -p files/etc/uci-defaults

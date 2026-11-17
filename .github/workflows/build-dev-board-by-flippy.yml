@@ -109,31 +109,19 @@ jobs:
         run: |
           cp n1/99-banner.sh files/etc/uci-defaults/
 
-      - name: 添加 H68K 设备+CPU修复补丁
+      - name: H68K 板型+CPU显示修复（覆盖/sbin/cpuinfo）
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           mkdir -p files/etc/uci-defaults
-          mkdir -p files/etc/init.d
+          # 覆盖 /sbin/cpuinfo，LuCI系统页读取这个输出
+          echo '#!/bin/sh' > files/sbin/cpuinfo
+          echo 'echo "Cortex-A55 x4"' >> files/sbin/cpuinfo
+          chmod +x files/sbin/cpuinfo
 
-          # 1. 创建开机自启服务：每次开机修复 cpuinfo（mount --bind）
-          echo '#!/bin/sh /etc/rc.common' > files/etc/init.d/cpuinfo-fix
-          echo 'START=99' >> files/etc/init.d/cpuinfo-fix
-          echo 'start() {' >> files/etc/init.d/cpuinfo-fix
-          echo '    if ! grep -q "model name" /proc/cpuinfo; then' >> files/etc/init.d/cpuinfo-fix
-          echo '        mkdir -p /tmp/cpuinfo_fix' >> files/etc/init.d/cpuinfo-fix
-          echo '        cp /proc/cpuinfo /tmp/cpuinfo_fix/cpuinfo' >> files/etc/init.d/cpuinfo-fix
-          echo "        sed -i 's/^processor/ model name      : ARMv8 Cortex-A55 (RK3568)\\nprocessor/' /tmp/cpuinfo_fix/cpuinfo" >> files/etc/init.d/cpuinfo-fix
-          echo '        mount --bind /tmp/cpuinfo_fix/cpuinfo /proc/cpuinfo' >> files/etc/init.d/cpuinfo-fix
-          echo '    fi' >> files/etc/init.d/cpuinfo-fix
-          echo '}' >> files/etc/init.d/cpuinfo-fix
-          chmod +x files/etc/init.d/cpuinfo-fix
-
-          # 2. 首次开机：设置板型 + 启用CPU修复服务
+          # 写入板型型号信息
           echo '#!/bin/sh' > files/etc/uci-defaults/99-h68k-info
           echo 'echo "hinlink,h68k" > /tmp/sysinfo/board_name' >> files/etc/uci-defaults/99-h68k-info
           echo 'echo "Hinlink H68K (RK3568, 4×Cortex-A55)" > /tmp/sysinfo/model' >> files/etc/uci-defaults/99-h68k-info
-          echo '/etc/init.d/cpuinfo-fix enable' >> files/etc/uci-defaults/99-h68k-info
-          echo '/etc/init.d/cpuinfo-fix start' >> files/etc/uci-defaults/99-h68k-info
           echo 'exit 0' >> files/etc/uci-defaults/99-h68k-info
           chmod +x files/etc/uci-defaults/99-h68k-info
 
@@ -165,6 +153,7 @@ jobs:
               --user root \
               -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
               -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
+              -v "${{ github.workspace }}/files/sbin:/home/build/immortalwrt/files/sbin" \
               -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
               -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
               -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \

@@ -108,11 +108,11 @@ jobs:
         if: ${{ github.event.inputs.skip_imagebuilder == 'false' && github.event.inputs.replace_banner == 'true' }}
         run: |
           cp n1/99-banner.sh files/etc/uci-defaults/
-
       - name: H68K 板型+CPU显示修复（覆盖/sbin/cpuinfo）
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           mkdir -p files/etc/uci-defaults
+          mkdir -p files/sbin
           # 覆盖 /sbin/cpuinfo，LuCI系统页读取这个输出
           echo '#!/bin/sh' > files/sbin/cpuinfo
           echo 'echo "Cortex-A55 x4"' >> files/sbin/cpuinfo
@@ -123,7 +123,7 @@ jobs:
           echo 'echo "hinlink,h68k" > /tmp/sysinfo/board_name' >> files/etc/uci-defaults/99-h68k-info
           echo 'echo "Hinlink H68K (RK3568, 4×Cortex-A55)" > /tmp/sysinfo/model' >> files/etc/uci-defaults/99-h68k-info
           echo 'exit 0' >> files/etc/uci-defaults/99-h68k-info
-          chmod +x files/etc/uci-defaults/99-h68k-info
+          chmod +x files/etc/uci-defaults/99-h68k-info      
 
       - name: 预置 OpenClash
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}

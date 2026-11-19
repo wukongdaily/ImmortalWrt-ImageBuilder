@@ -86,6 +86,8 @@ CUSTOM_PACKAGES="$CUSTOM_PACKAGES \
 # =========custom append=========
 
 #===========================以下imm仓库内的软件==============================↓
+# L2TP 网络——接口——添加新接口 协议选L2TP
+#CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-proto-ppp xl2tpd ppp ppp-mod-pppol2tp kmod-l2tp kmod-l2tp-ip kmod-pppol2tp"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-3cat-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-3ginfo-lite-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-i18n-acl-zh-cn"

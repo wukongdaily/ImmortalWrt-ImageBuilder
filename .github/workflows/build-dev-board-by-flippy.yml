@@ -16,9 +16,9 @@ on:
           - 24.10.5
           - 24.10.6
       openwrt_kernel:
-        description: "选择构建的内核"
+        description: "选择构建的内核【默认6.12.y】"
         required: false
-        default: "6.1.y"
+        default: "6.12.y"
         type: choice
         options:
           - 5.4.y
@@ -67,7 +67,7 @@ on:
           - 'yes'
           - 'no'
       skip_imagebuilder:
-        description: "直接使用底包快速构建固件"
+        description: "直接使用底包快速构建固件（勾选则不内置OpenClash）"
         required: false
         default: false
         type: boolean
@@ -109,7 +109,7 @@ jobs:
         run: |
           cp n1/99-banner.sh files/etc/uci-defaults/
 
-      - name: H68K 板型+CPU显示修复 + 彻底移除无线 + SOC温度
+      - name: H68K 板型+CPU显示修复 + 彻底移除无线 + SOC温度【保留】
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
           mkdir -p files/etc/uci-defaults
@@ -139,52 +139,41 @@ jobs:
           echo 'exit 0' >> files/etc/uci-defaults/99-rm-wireless-config
           chmod +x files/etc/uci-defaults/99-rm-wireless-config
 
-          # 首页增加RK3568温度读取
+          # 首页增加RK3568 SOC温度读取【保留】
           echo '#!/bin/sh' > files/etc/uci-defaults/99-add-temperature
           echo 'uci set luci.main.tempfile="/sys/class/thermal/thermal_zone0/temp"' >> files/etc/uci-defaults/99-add-temperature
           echo 'uci commit luci' >> files/etc/uci-defaults/99-add-temperature
           echo 'exit 0' >> files/etc/uci-defaults/99-add-temperature
           chmod +x files/etc/uci-defaults/99-add-temperature
 
-      - name: 预置 OpenClash
+      - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt 24.10.6 + 内置OpenClash)
         if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
         run: |
-          mkdir -p files/etc/uci-defaults
-          echo '#!/bin/sh' > files/etc/uci-defaults/99-install-openclash
-          echo 'opkg update' >> files/etc/uci-defaults/99-install-openclash
-          echo 'opkg install luci-app-openclash' >> files/etc/uci-defaults/99-install-openclash
-          echo 'exit 0' >> files/etc/uci-defaults/99-install-openclash
-          chmod +x files/etc/uci-defaults/99-install-openclash
-
-      - name: Build Rootfs for Radxa and Other Boards (ImmortalWrt)
-        if: ${{ github.event.inputs.skip_imagebuilder != 'true' }}
-        run: |
-          echo "✅ 使用 ImageBuilder 构建 rootfs"
+          echo "✅ 使用 ImageBuilder 构建 rootfs【内置OpenClash，内核6.12.y，SOC温度保留】"
           profiles="generic"
           include_docker="${{ github.event.inputs.include_docker }}"
           rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
           luci_version="${{ github.event.inputs.luci_version }}"
+          PACKAGES="-kmod-cfg80211 -kmod-mac80211 -hostapd -wpa-supplicant -luci-proto-relayd lm-sensors -dnsmasq luci-app-openclash dnsmasq-full bash curl ca-bundle ip-full ruby ruby-yaml kmod-tun kmod-inet-diag unzip kmod-nft-tproxy luci-compat coreutils-nohup"
 
           IFS=',' read -r -a profile_array <<< "$profiles"
-
           for profile in "${profile_array[@]}"; do
             echo "Building for profile: $profile"
-
             docker run --rm -i \
-              --user root \
-              -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
-              -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
-              -v "${{ github.workspace }}/files/sbin:/home/build/immortalwrt/files/sbin" \
-              -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
-              -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
-              -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
-              -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
-              -v "${{ github.workspace }}/n1/build.sh:/home/build/immortalwrt/build.sh" \
-              -e PROFILE=$profile \
-              -e INCLUDE_DOCKER=$include_docker \
-              -e ROOTFS_PARTSIZE=$rootfs_partsize \
-              -e PACKAGES="-kmod-cfg80211 -kmod-mac80211 -hostapd -wpa-supplicant -luci-proto-relayd lm-sensors" \
-              immortalwrt/imagebuilder:armsr-armv8-openwrt-${luci_version} /bin/bash /home/build/immortalwrt/build.sh
+            --user root \
+            -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
+            -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
+            -v "${{ github.workspace }}/files/sbin:/home/build/immortalwrt/files/sbin" \
+            -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
+            -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
+            -v "${{ github.workspace }}/n1/banner:/home/build/immortalwrt/files/mnt/banner" \
+            -v "${{ github.workspace }}/n1/imm.config:/home/build/immortalwrt/.config" \
+            -v "${{ github.workspace }}/n1/build.sh:/home/build/immortalwrt/build.sh" \
+            -e PROFILE="$profile" \
+            -e INCLUDE_DOCKER="$include_docker" \
+            -e ROOTFS_PARTSIZE="$rootfs_partsize" \
+            -e PACKAGES="$PACKAGES" \
+            immortalwrt/imagebuilder:armsr-armv8-openwrt-${luci_version} /bin/bash /home/build/immortalwrt/build.sh
           done
 
       - name: Download prebuilt rootfs.tar.gz
